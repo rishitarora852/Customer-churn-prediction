@@ -12,6 +12,8 @@ import joblib
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import matplotlib.pyplot as plt
+import shap
 
 
 # ============================================================
@@ -60,6 +62,14 @@ model = load_model()
 feature_columns = load_feature_columns()
 clv_reference = load_clv_reference()
 scaler = load_scaler()
+
+@st.cache_resource
+def load_explainer(_model):
+    """Initialise SHAP TreeExplainer for the XGBoost model."""
+    return shap.TreeExplainer(_model)
+
+
+explainer = load_explainer(model)
 
 
 # ============================================================
@@ -335,7 +345,33 @@ with col_left:
 
 with col_right:
     st.subheader("Why this prediction?")
-    st.caption("SHAP-based explanation will appear here in the next step.")
+
+    if predict_button:
+        # Compute SHAP values for this single prediction
+        shap_values = explainer.shap_values(input_df)
+        expected_value = explainer.expected_value
+
+        # Build a SHAP Explanation object for the waterfall plot
+        single_explanation = shap.Explanation(
+            values=shap_values[0],
+            base_values=expected_value,
+            data=input_df.iloc[0].values,
+            feature_names=input_df.columns.tolist()
+        )
+
+        # Render waterfall plot
+        fig, ax = plt.subplots(figsize=(8, 6))
+        shap.plots.waterfall(single_explanation, max_display=10, show=False)
+        st.pyplot(fig, clear_figure=True)
+
+        st.caption(
+            "Each bar shows how much one feature pushed this customer's predicted "
+            "churn probability up (red, toward churn) or down (blue, toward retention). "
+            "The model's baseline is the average prediction across all customers; "
+            "individual features explain the deviation from that baseline."
+        )
+    else:
+        st.caption("Click *Predict churn risk* to see the per-customer feature attribution.")
 
 
 # ============================================================
